@@ -5,8 +5,7 @@ import argparse
 from easy_functions import (format_time,
                             get_input_length,
                             get_video_details,
-                            show_video,
-                            g_colab)
+                            show_video)
 import contextlib
 import shutil
 import subprocess
@@ -14,6 +13,11 @@ import time
 from IPython.display import Audio, Image, clear_output, display
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 import configparser
+import sqlite3
+import datetime
+
+# Database path
+db_path = "C:\\\\Users\\\\zabit\\\\Documents\\\\GitHub\\\\wav-png-to-TTS-lipsync\\\\times.db"
 
 parser = argparse.ArgumentParser(description='Easy-Wav2Lip main run file')
 
@@ -28,7 +32,12 @@ args = parser.parse_args()
 # retrieve variables from config.ini
 config = configparser.ConfigParser()
 
-config.read('config.ini')
+checkpoint_path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/"
+
+config.read(os.path.join(checkpoint_path, "config.ini"))
+
+print(config.sections())
+
 if args.video_file:
     video_file = args.video_file
 else:
@@ -55,15 +64,12 @@ batch_process = config.getboolean('OTHER', 'batch_process')
 output_suffix = config['OTHER']['output_suffix']
 include_settings_in_suffix = config.getboolean('OTHER', 'include_settings_in_suffix')
 
-if g_colab():
-    preview_input = config.getboolean("OTHER", "preview_input")
-else:
-    preview_input = False
+
+preview_input = False
 preview_settings = config.getboolean("OTHER", "preview_settings")
 frame_to_preview = config.getint("OTHER", "frame_to_preview")
 
 working_directory = os.getcwd()
-
 
 start_time = time.time()
 
@@ -81,9 +87,9 @@ if not os.path.exists(video_file):
     sys.exit(f"Could not find file: {video_file}")
 
 if wav2lip_version == "Wav2Lip_GAN":
-    checkpoint_path = os.path.join(working_directory, "checkpoints", "Wav2Lip_GAN.pth")
+    checkpoint_path = os.path.join(checkpoint_path, "checkpoints/Wav2Lip_GAN.pth")
 else:
-    checkpoint_path = os.path.join(working_directory, "checkpoints", "Wav2Lip.pth")
+    checkpoint_path = os.path.join(checkpoint_path, "checkpoints/Wav2Lip.pth")
 
 if feathering == 3:
     feathering = 5
@@ -105,8 +111,8 @@ out_height = round(in_height / resolution_scale)
 
 if res_custom:
     out_height = int(output_height)
+    
 fps_for_static_image = 30
-
 
 if output_suffix == "" and not include_settings_in_suffix:
     sys.exit(
@@ -141,8 +147,6 @@ if include_settings_in_suffix:
             output_suffix = f"{output_suffix}_mt"
         if debug_mask:
             output_suffix = f"{output_suffix}_debug"
-if preview_settings:
-    output_suffix = f"{output_suffix}_preview"
 
 
 rescaleFactor = str(round(1 // resolution_scale))
@@ -195,14 +199,15 @@ else:  # if there is no filenumber - make it blank
 process_failed = False
 
 
-temp_output = os.path.join(working_directory, "temp", "output.mp4")
-temp_folder = os.path.join(working_directory, "temp")
+temp_output = os.path.join("C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/temp/output.mp4")
+temp_folder = os.path.join("C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/temp")
 
 last_input_video = None
 last_input_audio = None
 
 # --------------------------Batch processing loop-------------------------------!
 while True:
+    iteration_start_time = time.time()
 
     # construct input_video
     input_video = os.path.join(folder, filenamenonumber + str(filenumber) + file_type)
@@ -229,7 +234,7 @@ while True:
         output_filename = filenamenonumber + str(filenumber)
 
     # construct output_video
-    output_video = os.path.join(folder, output_filename + output_suffix + ".mp4")
+    output_video = os.path.join(folder, output_suffix + ".mp4")
     output_video = os.path.normpath(output_video)
     output_videofile = os.path.basename(output_video)
 
@@ -237,17 +242,6 @@ while True:
     if os.path.exists("temp"):
         shutil.rmtree("temp")
     os.makedirs("temp", exist_ok=True)
-
-    # preview inputs (if enabled)
-    if preview_input:
-        print("input video:")
-        show_video(input_video)
-        if vocal_file != "":
-            print("input audio:")
-            display(Audio(input_audio))
-        else:
-            print("using", input_videofile, "for audio")
-        print("You may want to check now that they're the correct files!")
 
     last_input_video = input_video
     last_input_audio = input_audio
@@ -267,63 +261,6 @@ while True:
     # trim video if it's longer than the audio
     video_length = get_input_length(temp_input_video)
     audio_length = get_input_length(temp_input_audio)
-
-    if preview_settings:
-        batch_process = False
-
-        preview_length_seconds = 1
-        converted_preview_frame = frame_to_preview / in_fps
-        preview_start_time = min(
-            converted_preview_frame, video_length - preview_length_seconds
-        )
-
-        preview_video_path = os.path.join(
-            temp_folder,
-            "preview_"
-            + str(preview_start_time)
-            + "_"
-            + str(U)
-            + str(D)
-            + str(L)
-            + str(R)
-            + input_videofile,
-        )
-        preview_audio_path = os.path.join(temp_folder, "preview_" + input_audiofile)
-
-        subprocess.call(
-            [
-                "ffmpeg",
-                "-loglevel",
-                "error",
-                "-i",
-                temp_input_video,
-                "-ss",
-                str(preview_start_time),
-                "-to",
-                str(preview_start_time + preview_length_seconds),
-                "-c",
-                "copy",
-                preview_video_path,
-            ]
-        )
-        subprocess.call(
-            [
-                "ffmpeg",
-                "-loglevel",
-                "error",
-                "-i",
-                temp_input_audio,
-                "-ss",
-                str(preview_start_time),
-                "-to",
-                str(preview_start_time + 1),
-                "-c",
-                "copy",
-                preview_audio_path,
-            ]
-        )
-        temp_input_video = preview_video_path
-        temp_input_audio = preview_audio_path
 
     if video_length > audio_length:
         trimmed_video_path = os.path.join(
@@ -356,7 +293,7 @@ while True:
 
     cmd = [
         sys.executable,
-        "inference.py",
+        "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/inference.py",
         "--face",
         temp_input_video,
         "--audio",
@@ -390,48 +327,99 @@ while True:
         str(mouth_tracking),
     ]
 
+    print()
+    print(f"Running command: {' '.join(cmd)}")
+    # input('Press ENTER to exit')
+
     # Run the command
     subprocess.run(cmd)
 
-    if preview_settings:
-        if os.path.isfile(os.path.join(temp_folder, "preview.jpg")):
-            print(f"preview successful! Check out temp/preview.jpg")
-            with open("last_file.txt", "w") as f:
-                f.write(temp_input_video)
-            # end processing timer and format the time it took
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            formatted_setup_time = format_time(elapsed_time)
-            print(f"Execution time: {formatted_setup_time}")
-            break
+    # Log run details to SQLite database
+    run_timestamp_val = datetime.datetime.now().isoformat()
+    # Determine run status based on existence of temp_output
+    run_status_val = "success" if os.path.isfile(temp_output) else "failure"
+    current_processing_duration_s_val = time.time() - iteration_start_time
 
-        else:
-            print(f"Processing failed! :( see line above 👆")
-            print("Consider searching the issues tab on the github:")
-            print("https://github.com/anothermartz/Easy-Wav2Lip/issues")
-            exit()
+    # Collect data for logging
+    log_data = (
+        run_timestamp_val,
+        input_video, # input_video_path
+        input_audio, # input_audio_path
+        output_video, # output_video_path
+        wav2lip_version, # wav2lip_model_version
+        quality, # quality_preset
+        output_height, # output_height_config (string like "full resolution")
+        out_height, # calculated_output_height_px
+        U, # padding_up_px
+        D, # padding_down_px
+        L, # padding_left_px
+        R, # padding_right_px
+        float(size), # mask_size_factor
+        feathering, # mask_feathering_px (already int, potentially modified)
+        1 if nosmooth else 0, # nosmooth_active
+        1 if mouth_tracking else 0, # mouth_tracking_active
+        1 if debug_mask else 0, # debug_mask_active
+        float(video_length) if video_length is not None else None, # original_video_duration_s (duration of temp_input_video before trim)
+        float(audio_length) if audio_length is not None else None, # audio_duration_s
+        current_processing_duration_s_val, # processing_duration_s
+        run_status_val, # run_status
+        1 if batch_process else 0, # is_batch_run_item
+        checkpoint_path # checkpoint_path_used
+    )
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        sql = """INSERT INTO Wav2Lip_runs (
+                    run_timestamp, input_video_path, input_audio_path, output_video_path,
+                    wav2lip_model_version, quality_preset, output_height_config,
+                    calculated_output_height_px, padding_up_px, padding_down_px,
+                    padding_left_px, padding_right_px, mask_size_factor, mask_feathering_px,
+                    nosmooth_active, mouth_tracking_active, debug_mask_active,
+                    original_video_duration_s, audio_duration_s, processing_duration_s,
+                    run_status, is_batch_run_item, checkpoint_path_used
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        cursor.execute(sql, log_data)
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        print(f"Failed to log run to database. Data: {log_data}")
+    finally:
+        if conn:
+            conn.close()
+
+    print()
+    print("Preview settings:", preview_settings)
 
     # rename temp file and move to correct directory
+    print("Temp output video:", temp_output)
+    print()
+    print(f"Output video will be saved as: {output_video}")
+    print()
+    # input('Press ENTER to exit')
     if os.path.isfile(temp_output):
+        print(f"Temp output video exists, moving to {output_video}")
         if os.path.isfile(output_video):
             os.remove(output_video)
         shutil.copy(temp_output, output_video)
         # show output video
         with open("last_file.txt", "w") as f:
+            print(f"Writing last processed video to last_file.txt: {temp_input_video}")
             f.write(temp_input_video)
         print(f"{output_filename} successfully lip synced! It will be found here:")
-        print(output_video)
-
-        # end processing timer and format the time it took
+        print(output_video)        # end processing timer and format the time it took
         end_time = time.time()
         elapsed_time = end_time - start_time
         formatted_setup_time = format_time(elapsed_time)
         print(f"Execution time: {formatted_setup_time}")
+        
 
     else:
-        print(f"Processing failed! :( see line above 👆")
+        print(f"Temp output video doesn't exists")
+        print(f"Processing failed! :( see line above")
         print("Consider searching the issues tab on the github:")
         print("https://github.com/anothermartz/Easy-Wav2Lip/issues")
+        input('Press ENTER to exit')
         process_failed = True
 
     if batch_process == False:
@@ -440,22 +428,28 @@ while True:
         else:
             break
 
+    
+
     elif filenumber == "" and audio_filenumber == "":
         print("Files not set for batch processing")
         break
 
+    # input('Press ENTER to exit')
+
     # -----------------------------Batch Processing!------------------------------!
     if filenumber != "":  # if video has a filenumber
         match = re.search(r"\d+", filenumber)
-        # add 1 to video filenumber
-        filenumber = (
-            f"{filenumber[:match.start()]}{int(match.group())+1:0{len(match.group())}d}"
-        )
+        if match:  # Check if a number was found
+            # add 1 to video filenumber
+            filenumber = (
+                f"{filenumber[:match.start()]}{int(match.group())+1:0{len(match.group())}d}"
+            )
 
     if audio_filenumber != "":  # if audio has a filenumber
         match = re.search(r"\d+", audio_filenumber)
-        # add 1 to audio filenumber
-        audio_filenumber = f"{audio_filenumber[:match.start()]}{int(match.group())+1:0{len(match.group())}d}"
+        if match:  # Check if a number was found
+            # add 1 to audio filenumber
+            audio_filenumber = f"{audio_filenumber[:match.start()]}{int(match.group())+1:0{len(match.group())}d}"
 
     # construct input_video
     input_video = os.path.join(folder, filenamenonumber + str(filenumber) + file_type)
@@ -476,21 +470,24 @@ while True:
     if os.path.exists(input_video) and input_video != last_input_video:
         if audio_filenumber != "":  # if audio has a filenumber
             match = re.search(r"\d+", audio_filenumber)
-            # take 1 from audio filenumber
-            audio_filenumber = f"{audio_filenumber[:match.start()]}{int(match.group())-1:0{len(match.group())}d}"
+            if match:  # Check if a number was found
+                # take 1 from audio filenumber
+                audio_filenumber = f"{audio_filenumber[:match.start()]}{int(match.group())-1:0{len(match.group())}d}"
         continue
 
     # audio +1 only - continue with last video file
     if os.path.exists(input_audio) and input_audio != last_input_audio:
         if filenumber != "":  # if video has a filenumber
             match = re.search(r"\d+", filenumber)
-            # take 1 from video filenumber
-            filenumber = f"{filenumber[:match.start()]}{int(match.group())-1:0{len(match.group())}d}"
+            if match:  # Check if a number was found
+                # take 1 from video filenumber
+                filenumber = f"{filenumber[:match.start()]}{int(match.group())-1:0{len(match.group())}d}"
         continue
 
     # neither +1 files exist or current files already processed - finish processing
     print("Finished all sequentially numbered files")
     if process_failed:
         sys.exit("Processing failed on at least one video")
+        input('Press ENTER to exit')
     else:
         break

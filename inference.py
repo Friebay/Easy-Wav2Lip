@@ -236,10 +236,12 @@ parser.add_argument(
     default="Fast",
 )
 
-with open(os.path.join("checkpoints", "predictor.pkl"), "rb") as f:
+path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/"
+
+with open(os.path.join(path, "checkpoints/predictor.pkl"), "rb") as f:
     predictor = pickle.load(f)
 
-with open(os.path.join("checkpoints", "mouth_detector.pkl"), "rb") as f:
+with open(os.path.join(path, "checkpoints/mouth_detector.pkl"), "rb") as f:
     mouth_detector = pickle.load(f)
 
 # creating variables to prevent failing when a face isn't detected
@@ -250,7 +252,7 @@ g_colab = g_colab()
 if not g_colab:
   # Load the config file
   config = configparser.ConfigParser()
-  config.read('config.ini')
+  config.read(os.path.join(path, "config.ini"))
 
   # Get the value of the "preview_window" variable
   preview_window = config.get('OPTIONS', 'preview_window')
@@ -263,7 +265,7 @@ def do_load(checkpoint_path):
     global model, detector, detector_model
     model = load_model(checkpoint_path)
     detector = RetinaFace(
-        gpu_id=gpu_id, model_path="checkpoints/mobilenet.pth", network="mobilenet"
+        gpu_id=gpu_id, model_path=os.path.join(path, "checkpoints/mobilenet.pth"), network="mobilenet"
     )
     detector_model = detector.model
 
@@ -532,7 +534,17 @@ def datagen(frames, mels):
     for i, m in enumerate(mels):
         idx = 0 if args.static else i % len(frames)
         frame_to_save = frames[idx].copy()
-        face, coords = face_det_results[idx].copy()
+
+        try:
+            face, coords = face_det_results[idx].copy()
+        except IndexError:
+            print(f"\nWarning: Face detection result index {idx} out of range (len: {len(face_det_results)})")
+            if len(face_det_results) > 0:
+                # Use the last available face detection result as fallback
+                face, coords = face_det_results[-1].copy()
+            else:
+                print("No face detection results available. Skipping this batch.")
+                continue
 
         face = cv2.resize(face, (args.img_size, args.img_size))
 
