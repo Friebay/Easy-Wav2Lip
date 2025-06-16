@@ -17,7 +17,7 @@ import sqlite3
 import datetime
 
 # Database path
-db_path = "C:\\\\Users\\\\zabit\\\\Documents\\\\GitHub\\\\wav-png-to-TTS-lipsync\\\\times.db"
+db_path = "C:\\Users\\zabit\\Documents\\GitHub\\wav-png-to-TTS-lipsync\\times.db"
 
 parser = argparse.ArgumentParser(description='Easy-Wav2Lip main run file')
 
@@ -32,7 +32,7 @@ args = parser.parse_args()
 # retrieve variables from config.ini
 config = configparser.ConfigParser()
 
-checkpoint_path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/"
+checkpoint_path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/external/Easy-Wav2Lip/"
 
 config.read(os.path.join(checkpoint_path, "config.ini"))
 
@@ -293,7 +293,7 @@ while True:
 
     cmd = [
         sys.executable,
-        "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/inference.py",
+        "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/external/Easy-Wav2Lip/inference.py",
         "--face",
         temp_input_video,
         "--audio",
@@ -340,6 +340,34 @@ while True:
     run_status_val = "success" if os.path.isfile(temp_output) else "failure"
     current_processing_duration_s_val = time.time() - iteration_start_time
 
+    print(output_video)
+
+    # Create a videos directory if it doesn't exist
+    videos_dir = os.path.join("C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/videos")
+    os.makedirs(videos_dir, exist_ok=True)
+
+    # Copy the output video to the videos directory
+    if os.path.isfile(temp_output):
+        print(f"Copying output video to videos directory...")
+        videos_output_path = os.path.join(videos_dir, os.path.basename(output_video))
+        
+        # Make sure we don't overwrite existing files with the same name
+        base, ext = os.path.splitext(os.path.basename(output_video))
+        counter = 1
+        while os.path.exists(videos_output_path):
+            videos_output_path = os.path.join(videos_dir, f"{base}_{counter}{ext}")
+            counter += 1
+        
+        try:
+            shutil.copy(temp_output, videos_output_path)
+            print(f"Video copied to: {videos_output_path}")
+        except Exception as e:
+            print(f"Error copying video to videos directory: {e}")
+    else:
+        print("No output video was created to copy to videos directory")
+
+        
+
     # Collect data for logging
     log_data = (
         run_timestamp_val,
@@ -364,7 +392,8 @@ while True:
         current_processing_duration_s_val, # processing_duration_s
         run_status_val, # run_status
         1 if batch_process else 0, # is_batch_run_item
-        checkpoint_path # checkpoint_path_used
+        checkpoint_path, # checkpoint_path_used
+        videos_output_path
     )
 
     try:
@@ -377,8 +406,8 @@ while True:
                     padding_left_px, padding_right_px, mask_size_factor, mask_feathering_px,
                     nosmooth_active, mouth_tracking_active, debug_mask_active,
                     original_video_duration_s, audio_duration_s, processing_duration_s,
-                    run_status, is_batch_run_item, checkpoint_path_used
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    run_status, is_batch_run_item, checkpoint_path_used, videos_output_path
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"""
         cursor.execute(sql, log_data)
         conn.commit()
     except sqlite3.Error as e:
@@ -412,7 +441,6 @@ while True:
         elapsed_time = end_time - start_time
         formatted_setup_time = format_time(elapsed_time)
         print(f"Execution time: {formatted_setup_time}")
-        
 
     else:
         print(f"Temp output video doesn't exists")
@@ -421,6 +449,8 @@ while True:
         print("https://github.com/anothermartz/Easy-Wav2Lip/issues")
         input('Press ENTER to exit')
         process_failed = True
+
+    
 
     if batch_process == False:
         if process_failed:

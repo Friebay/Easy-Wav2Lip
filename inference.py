@@ -236,7 +236,7 @@ parser.add_argument(
     default="Fast",
 )
 
-path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/wav22lip/Easy-Wav2Lip/"
+path = "C:/Users/zabit/Documents/GitHub/wav-png-to-TTS-lipsync/external/Easy-Wav2Lip/"
 
 with open(os.path.join(path, "checkpoints/predictor.pkl"), "rb") as f:
     predictor = pickle.load(f)
