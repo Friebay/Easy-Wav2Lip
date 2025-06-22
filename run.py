@@ -4,17 +4,53 @@ import re
 import argparse
 from easy_functions import (format_time,
                             get_input_length,
-                            get_video_details,
-                            show_video)
+                            get_video_details)
 import contextlib
 import shutil
 import subprocess
 import time
-from IPython.display import Audio, Image, clear_output, display
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 import configparser
 import sqlite3
 import datetime
+import sqlite3
+
+def mark_first_question_as_finished():
+    conn = None
+    try:
+        # Connect to the SQLite database
+        conn = sqlite3.connect('C:\\Users\\zabit\\Documents\\GitHub\\wav-png-to-TTS-lipsync\\queue.db')
+        cursor = conn.cursor()
+
+        # Update the first unfinished question to mark it as finished
+        # Using a subquery to identify the first unfinished record
+        cursor.execute("""
+            UPDATE queue 
+            SET finished = 1 
+            WHERE rowid = (
+                SELECT rowid FROM queue 
+                WHERE finished = 2 
+                ORDER BY rowid LIMIT 1
+            )
+        """)
+        
+        # Commit the changes
+        conn.commit()
+        
+        # Check if any row was affected
+        rows_updated = cursor.rowcount
+        if rows_updated > 0:
+            return f"Successfully marked question as finished ({rows_updated} row updated)"
+        else:
+            return "No unfinished questions found to update"
+
+    except sqlite3.Error as e:
+        return f"Database error: {e}"
+    
+    finally:
+        # Ensure the connection is closed even if an error occurs
+        if conn:
+            conn.close()
 
 # Database path
 db_path = "C:\\Users\\zabit\\Documents\\GitHub\\wav-png-to-TTS-lipsync\\times.db"
@@ -417,6 +453,25 @@ while True:
         if conn:
             conn.close()
 
+    try:
+        # Open source file in read mode
+        with open("C:\\Users\\zabit\\Documents\\GitHub\\wav-png-to-TTS-lipsync\\llm_answer.txt", "r", encoding="utf-8") as source_file:
+            content = source_file.read()
+        
+        # Write content to destination file
+        with open("C:\\Users\\zabit\\Documents\\GitHub\\wav-png-to-TTS-lipsync\\llm_answer_show.txt", "w", encoding="utf-8", errors="ignore") as destination_file:
+            print(content)
+            destination_file.write(content)
+            # input("Press ENTER to continue")
+            
+        print("Content successfully copied from llm_answer.txt to llm_answer_show.txt")
+    except FileNotFoundError:
+        print("Error: Source file not found.")
+        # input("Press ENTER to continue")
+    except Exception as e:
+        print(f"An error occurred here: {e}")
+        # input("Press ENTER to continue")
+
     print()
     print("Preview settings:", preview_settings)
 
@@ -442,15 +497,15 @@ while True:
         formatted_setup_time = format_time(elapsed_time)
         print(f"Execution time: {formatted_setup_time}")
 
+        result = mark_first_question_as_finished()
+        print(result)
+        # input('Press ENTER to continue')
+
     else:
         print(f"Temp output video doesn't exists")
         print(f"Processing failed! :( see line above")
-        print("Consider searching the issues tab on the github:")
-        print("https://github.com/anothermartz/Easy-Wav2Lip/issues")
         input('Press ENTER to exit')
         process_failed = True
-
-    
 
     if batch_process == False:
         if process_failed:
